@@ -294,3 +294,8 @@ svg.ti { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-wid
   .mbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); align-items: center; }
   .m-active { grid-column: 1 / -1; }
 }
+/* أعمدة نوعية الحفظ */
+.tbl td.ok-t { color: var(--ok); font-weight: 600; }
+.tbl td.p-t { color: var(--p); font-weight: 600; }
+.tbl td.warn-t { color: var(--warn); font-weight: 600; }
+.tbl td.muted-t { color: var(--muted); }

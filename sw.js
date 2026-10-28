@@ -4,7 +4,7 @@
  * • الأيقونات والخطوط ومكتبات الرسوم: من الذاكرة أولاً (أسرع)
  * • طلبات الخادم (Apps Script) لا تُخزَّن أبداً
  */
-const VERSION = 'nsd-shell-v1';
+const VERSION = 'nsd-shell-v2';
 const SHELL = [
   './', './index.html', './dash.css', './dash.js', './config.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'

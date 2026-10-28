@@ -71,7 +71,7 @@ const MONTHS = ['جانفي', 'فيفري', 'مارس', 'أفريل', 'ماي', 
 const wdOf = n => (n + 4) % 7;   // رقم اليوم منذ 1970 ← يوم الأسبوع (0 = الأحد)
 
 /* ───────── البيانات بعد التحويل (تُعاد عند كل تحديث) ───────── */
-let START, NDAYS, NW, TODAY, FIRST, weeks, HOLI, holWeeks, RAM, PERIODS, LV, CUR, ST, TRAD, TO, SJ, OFFR, QT, W;
+let START, NDAYS, NW, TODAY, FIRST, weeks, HOLI, holWeeks, RAM, PERIODS, LV, CUR, ST, TRAD, TO, SJ, OFFR, QT, W, GR = [];
 let classes, teachers, students, att, logs, lessons, quran, offs;
 let cf, dDim, cDim, sDim, all, byWeek, byCls, byStu;
 let cf2, dDim2, cDim2, tDim2, sjDim, stDim, all2, byT2, bySj, bySt;
@@ -107,7 +107,7 @@ function load(raw) {
   RAM = raw.ramadan && raw.ramadan[1] - START >= 0 && raw.ramadan[0] - START < NDAYS ? [Math.max(0, raw.ramadan[0] - START), Math.min(NDAYS - 1, raw.ramadan[1] - START)] : null;
 
   // القوائم
-  ST = raw.lists.st; TO = raw.lists.to; SJ = raw.lists.sj; OFFR = raw.lists.off; QT = raw.lists.qt;
+  ST = raw.lists.st; TO = raw.lists.to; SJ = raw.lists.sj; OFFR = raw.lists.off; QT = raw.lists.qt; GR = raw.lists.gr || [];
   TRAD = new Set(ST.map((s, i) => (raw.trad || []).indexOf(s) > -1 ? i : -1).filter(i => i > -1));
   W = raw.weights || [40, 30, 30];
   LV = (raw.levels || []).slice();
@@ -128,7 +128,7 @@ function load(raw) {
     const s = students[A.s[i]];
     if (s.c == null || s.c < 0) s.c = A.c[i];
     classes[A.c[i]].rows++;
-    att.push({ d: A.d[i] - START, c: A.c[i], s: A.s[i], a: A.a[i], r: A.r[i] === 1 ? 1 : 0 });
+    att.push({ d: A.d[i] - START, c: A.c[i], s: A.s[i], a: A.a[i], r: A.r[i] === 1 ? 1 : 0, g: A.r[i] === 1 && A.g ? A.g[i] : -1 });
   }
 
   // السجل اليومي ← دروس + حصص قرآن + أيام لم تُقدَّم + تقارير مُرسلة
@@ -286,22 +286,32 @@ function kpiHTML(kp) {
 }
 
 /* ───────── تجميع الحضور والاستظهار (مرة واحدة على الأسطر المختارة) ───────── */
+// نوعية الحفظ: gr[i] = عدد مرات كل تقدير · ng = استظهر بلا تقدير (بيانات قديمة)
+const grAdd = (o, v) => { if (!v.r) return; if (v.g > -1 && v.g < GR.length) o.gr[v.g]++; else o.ng++; };
 function aggAtt() {
   let n = 0, ab = 0, l = 0, r = 0;
-  const C = new Map(), Sx = new Map();
+  const C = new Map(), Sx = new Map(), TG = EMPTY_G();
   for (const v of cf.allFiltered()) {
-    n++; if (v.a === 2) ab++; else if (v.a === 1) l++; r += v.r;
-    let c = C.get(v.c); if (!c) C.set(v.c, c = { n: 0, ab: 0, l: 0, r: 0, days: new Set(), stu: new Set() });
-    c.n++; if (v.a === 2) c.ab++; else if (v.a === 1) c.l++; c.r += v.r; c.days.add(v.d); c.stu.add(v.s);
-    let s = Sx.get(v.s); if (!s) Sx.set(v.s, s = { n: 0, ab: 0, l: 0, r: 0, lastAb: -1, lastNr: -1 });
-    s.n++;
+    n++; if (v.a === 2) ab++; else if (v.a === 1) l++; r += v.r; grAdd(TG, v);
+    let c = C.get(v.c); if (!c) C.set(v.c, c = EMPTY_C());
+    c.n++; if (v.a === 2) c.ab++; else if (v.a === 1) c.l++; c.r += v.r; c.days.add(v.d); c.stu.add(v.s); grAdd(c, v);
+    let s = Sx.get(v.s); if (!s) Sx.set(v.s, s = EMPTY_S());
+    s.n++; grAdd(s, v);
     if (v.a === 2) { s.ab++; if (v.d > s.lastAb) s.lastAb = v.d; }
     else { if (v.a === 1) s.l++; if (v.r) s.r++; else if (v.d > s.lastNr) s.lastNr = v.d; }
   }
-  return { n, ab, l, r, C, Sx };
+  return { n, ab, l, r, C, Sx, TG };
 }
-const EMPTY_C = () => ({ n: 0, ab: 0, l: 0, r: 0, days: new Set(), stu: new Set() });
-const EMPTY_S = () => ({ n: 0, ab: 0, l: 0, r: 0, lastAb: -1, lastNr: -1 });
+const EMPTY_G = () => ({ gr: GR.map(() => 0), ng: 0 });
+const EMPTY_C = () => ({ n: 0, ab: 0, l: 0, r: 0, days: new Set(), stu: new Set(), ...EMPTY_G() });
+const EMPTY_S = () => ({ n: 0, ab: 0, l: 0, r: 0, lastAb: -1, lastNr: -1, ...EMPTY_G() });
+// أعمدة نوعية الحفظ (عمود "بدون تقدير" يظهر فقط إن وُجدت أسطر قديمة بلا تقدير)
+const GR_TONE = ['ok-t', 'p-t', 'warn-t'];
+function gradeCols(get, showNg) {
+  return GR.map((nm, i) => ({ h: esc(nm), v: x => get(x).gr[i], c: x => fmt(get(x).gr[i]), cls: 'n ' + (GR_TONE[i] || '') }))
+    .concat(showNg ? [{ h: 'بدون تقدير', v: x => get(x).ng, c: x => fmt(get(x).ng), cls: 'n muted-t' }] : []);
+}
+const gradeFoot = (G, showNg) => G.gr.map(fmt).concat(showNg ? [fmt(G.ng)] : []);
 // تلاميذ القسم المختار: المسجّلون + من له أسطر فيه
 function classStudents(c, Sx) {
   const ids = new Set(classStu.get(c) || []);
@@ -367,11 +377,11 @@ function renderAtt(ok) {
 
 /* ───────── ② الاستظهار ───────── */
 function renderRec(ok) {
-  const { n, ab, r, C, Sx } = aggAtt(), pr = n - ab;
+  const { n, ab, r, C, Sx, TG } = aggAtt(), pr = n - ab, showNg = TG.ng > 0;
   const follow = [...Sx].map(([id, s]) => ({ st: students[id], ...s, nr: s.n - s.ab - s.r })).filter(x => x.nr > 0)
     .sort((a, z) => z.nr - a.nr || rate(a.r, a.n - a.ab) - rate(z.r, z.n - z.ab));
   $('kpis-rec').innerHTML = kpiHTML([
-    { l: 'الاستظهار', v: fmt(r), of: fmt(pr) + ' حاضر', s: 'مرات الاستظهار في الفترة' },
+    { l: 'الاستظهار', v: fmt(r), of: fmt(pr) + ' حاضر', s: GR.map((g, i) => `${esc(g)}: ${fmt(TG.gr[i])}`).concat(showNg ? [`بدون تقدير: ${fmt(TG.ng)}`] : []).join(' · ') || 'مرات الاستظهار في الفترة' },
     { l: 'لم يستظهر', v: fmt(pr - r), of: fmt(pr) + ' حاضر', s: 'حضر ولم يستظهر', bad: pr > r },
     { l: 'الحاضرون', v: fmt(pr), of: fmt(n), s: `غياب: ${fmt(ab)} (لا يُحسب في الاستظهار)` },
     { l: 'تلاميذ للمتابعة', v: fmt(follow.length), of: fmt(Sx.size) + ' تلميذ', s: 'لم يستظهروا مرة أو أكثر', bad: follow.length > 0 }
@@ -384,9 +394,10 @@ function renderRec(ok) {
     { h: 'عدد التلاميذ', v: x => x.reg, c: x => fmt(x.reg), cls: 'n' },
     { h: 'حاضر', v: x => x.pr, c: x => fmt(x.pr), cls: 'n' },
     { h: 'استظهر', v: x => x.g.r, c: x => fmt(x.g.r), cls: 'n' },
+    ...gradeCols(x => x.g, showNg),
     { h: 'لم يستظهر', v: x => x.pr - x.g.r, c: x => fmt(x.pr - x.g.r), cls: x => 'n' + (x.pr > x.g.r ? ' bad' : '') },
     { h: 'نسبة الاستظهار', v: x => rate(x.g.r, x.pr), c: x => pctTxt(rate(x.g.r, x.pr)), cls: 'n' }
-  ], cls, { attrs: x => sel('cls', x.c.id), foot: ['المجموع', fmt(T.reg), fmt(T.pr), fmt(T.r), fmt(T.pr - T.r), pctTxt(rate(T.r, T.pr))] });
+  ], cls, { attrs: x => sel('cls', x.c.id), foot: ['المجموع', fmt(T.reg), fmt(T.pr), fmt(T.r), ...gradeFoot(TG, showNg), fmt(T.pr - T.r), pctTxt(rate(T.r, T.pr))] });
 
   $('c-rec-stu').hidden = F.cls == null;
   if (F.cls != null) {
@@ -397,6 +408,7 @@ function renderRec(ok) {
       { h: 'التلميذ', v: x => x.st.name, c: x => esc(x.st.name), cls: 'nm' },
       { h: 'حاضر', v: x => x.pr, c: x => fmt(x.pr), cls: 'n' },
       { h: 'استظهر', v: x => x.r, c: x => fmt(x.r), cls: 'n' },
+      ...gradeCols(x => x, showNg),
       { h: 'لم يستظهر', v: x => x.nr, c: x => fmt(x.nr), cls: x => 'n' + (x.nr ? ' bad' : '') },
       { h: 'نسبة الاستظهار', v: x => rate(x.r, x.pr), c: x => pctTxt(rate(x.r, x.pr)), cls: 'n' }
     ], list, { attrs: x => sel('stu', x.st.id), empty: 'لا يوجد تلاميذ مسجّلون في هذا القسم.' });
