@@ -70,7 +70,8 @@ async function fetchData(code, ver) {
 
 /* ───────── المستخدم الحالي (جدول المستخدمين في صفحة الإعدادات) ───────── */
 let USER = { name: '', title: '', tabs: [] };
-const canSee = t => (USER.tabs || []).indexOf(t) > -1;
+// «متابعة الغياب» تظهر ضمنياً لمن له تبويب الحضور
+const canSee = t => (USER.tabs || []).indexOf(t === 'abs' ? 'att' : t) > -1;
 function applyRole() {
   for (const box of ['tabs', 'dtabs']) for (const b of $(box).children) b.hidden = !canSee(b.dataset.t);
   $('who').textContent = [USER.name, USER.title].filter(Boolean).join(' · ');
@@ -84,7 +85,7 @@ const wdOf = n => (n + 4) % 7;   // رقم اليوم منذ 1970 ← يوم ا�
 
 /* ───────── البيانات بعد التحويل (تُعاد عند كل تحديث) ───────── */
 let START, NDAYS, NW, TODAY, FIRST, weeks, HOLI, holWeeks, RAM, PERIODS, LV, CUR, ST, TRAD, TO, SJ, OFFR, QT, W, GR = [];
-let classes, teachers, students, att, logs, lessons, quran, offs, notes = [];
+let classes, teachers, students, att, logs, lessons, quran, offs, notes = [], absList = [], RAW = null;
 let cf, dDim, cDim, sDim, all, byWeek, byCls, byStu;
 let cf2, dDim2, cDim2, tDim2, sjDim, stDim, all2, byT2, bySj, bySt;
 
@@ -102,6 +103,7 @@ const ini2 = () => ({ n: 0, st: 0, to: 0, ia: 0 });
 const score = p => p.n ? 100 * (W[0] * p.ia / p.n + W[1] * p.to / p.n + W[2] * Math.min(1, p.st / p.n / 2.5)) / (W[0] + W[1] + W[2] || 1) : null;
 
 function load(raw) {
+  RAW = raw;
   TODAY = raw.today;
   const days = raw.att.d.concat(raw.logs.map(l => l[0]));
   const first = raw.season != null ? raw.season : (days.length ? Math.min(...days) : TODAY - 6);
@@ -129,7 +131,7 @@ function load(raw) {
   // القواميس
   classes = raw.classes.map((c, i) => ({ id: i, code: c.id, name: c.name, lv: LV.indexOf(c.level || 'بدون مستوى'), type: c.type, days: c.days || [], on: c.on, rows: 0 }));
   teachers = raw.teachers.map((t, i) => ({ id: i, code: t.id, name: t.name, on: t.on, cls: [], main: false, role: 'معلم مادة' }));
-  students = raw.students.map((s, i) => ({ id: i, name: s.name, c: s.c }));
+  students = raw.students.map((s, i) => ({ id: i, code: s.id, name: s.name, c: s.c }));
   raw.assign.forEach(a => { const t = teachers[a.t]; if (t.cls.indexOf(a.c) < 0) t.cls.push(a.c); if (a.main) { t.main = true; t.role = 'معلم قسم'; } });
 
   // الحضور والاستظهار
@@ -141,6 +143,14 @@ function load(raw) {
     if (s.c == null || s.c < 0) s.c = A.c[i];
     classes[A.c[i]].rows++;
     att.push({ d: A.d[i] - START, c: A.c[i], s: A.s[i], a: A.a[i], r: A.r[i] === 1 ? 1 : 0, g: A.r[i] === 1 && A.g ? A.g[i] : -1 });
+  }
+  // الغيابات + ما سُجّل لها من عذر (att.x: رقم السطر ← [السبب، أحضر عذراً، مقبول، كاتب العذر])
+  absList = [];
+  const X = A.x || {};
+  for (let i = 0; i < A.d.length; i++) {
+    if (A.a[i] !== 2 || !inSeason(A.d[i])) continue;
+    const e = X[i] || ['', -1, -1, ''];
+    absList.push(exSet({ i, d: A.d[i] - START, c: A.c[i], s: A.s[i] }, e));
   }
 
   // السجل اليومي ← دروس + حصص قرآن + أيام لم تُقدَّم + تقارير مُرسلة
@@ -205,6 +215,12 @@ function load(raw) {
   byT2 = tDim2.group().reduce(add2, rem2, ini2); bySj = sjDim.group().reduceCount(); bySt = stDim.group().reduceCount();
 }
 let subLogs = [], classStu = new Map();
+// حالة العذر: لم يُعالج / مقبول / مرفوض (لم يُحضر عذراً، أو أحضره ولم يُقبل)
+function exSet(o, e) {
+  o.why = e[0] || ''; o.br = e[1]; o.acc = e[2]; o.wr = e[3] || '';
+  o.st = o.br === 0 ? 'rej' : o.br === 1 ? (o.acc === 1 ? 'ok' : o.acc === 0 ? 'rej' : 'todo') : 'todo';
+  return o;
+}
 
 /* ───────── التواريخ والفترة ───────── */
 const WD = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -238,9 +254,9 @@ const canShift = dir => dir > 0 ? F.d1 < NDAYS - 1 : F.d0 > FIRST;
 /* ───────── الحالة ───────── */
 const F = { unit: 'month', d0: 0, d1: 0, cls: null, tch: null, lvl: null, typ: null, stu: null, subj: null, strat: null };
 let metric = 'att', tab = 'att', loaded = false, ver = '', syncedAt = 0;
-const more = { 't-stu': false, 't-rstu': false };
+const more = { 't-stu': false, 't-rstu': false, 't-abs': false };
 const PAGE = 25;
-const TABS = { att: 'الحضور', rec: 'الاستظهار', rep: 'جودة التقارير', q: 'جودة التدريس', notes: 'الملاحظات' };
+const TABS = { att: 'الحضور', abs: 'متابعة الغياب', rec: 'الاستظهار', rep: 'جودة التقارير', q: 'جودة التدريس', notes: 'الملاحظات' };
 
 function allowedByOthers() {
   const s = new Set();
@@ -614,12 +630,82 @@ function renderNotes(ok) {
   return [list.length, notes.length, 'ملاحظة'];
 }
 
+/* ───────── ①ب متابعة الغياب ───────── */
+const AST = { todo: { t: 'لم يُعالج', c: 'todo' }, ok: { t: 'مقبول', c: 'ok' }, rej: { t: 'مرفوض', c: 'rej' } };
+let astat = 'all';
+const absSel = ok => x => x.d >= F.d0 && x.d <= F.d1 && ok.has(x.c) && (F.cls == null || x.c === F.cls) && (F.stu == null || x.s === F.stu);
+function absBadge(ok) {
+  const n = canSee('abs') ? absList.filter(x => x.st === 'todo' && absSel(ok)(x)).length : 0;
+  for (const box of ['tabs', 'dtabs']) { const i = $(box).querySelector('[data-t="abs"] .tbadge'); if (i) { i.textContent = fmt(n); i.hidden = !n; } }
+}
+function renderAbs(ok) {
+  const inSel = absList.filter(absSel(ok));
+  const cnt = { all: inSel.length, todo: 0, ok: 0, rej: 0 };
+  inSel.forEach(x => cnt[x.st]++);
+  $('astat').innerHTML = [['all', 'الكل']].concat(Object.keys(AST).map(k => [k, AST[k].t]))
+    .map(([k, t]) => `<button type="button" data-a="${k}" aria-pressed="${astat === k}">${t} (${fmt(cnt[k])})</button>`).join('');
+  // الترتيب الافتراضي: لم يُعالج أولاً ثم الأحدث
+  const list = inSel.filter(x => astat === 'all' || x.st === astat)
+    .sort((a, z) => (a.st !== 'todo') - (z.st !== 'todo') || z.d - a.d || a.c - z.c || students[a.s].name.localeCompare(students[z.s].name, 'ar'));
+  const yn = v => v === 1 ? 'نعم' : v === 0 ? 'لا' : '—';
+  table('t-abs', [
+    { h: 'التاريخ', v: x => x.d, c: x => dShort(x.d), cls: 'n' },
+    { h: 'التلميذ', v: x => students[x.s].name, c: x => esc(students[x.s].name), cls: 'nm' },
+    { h: 'القسم', v: x => classes[x.c] ? classes[x.c].name : '', c: x => clsName(x.c), cls: 'nm' },
+    { h: 'سبب الغياب', v: x => x.why || null, c: x => x.why ? esc(x.why) : '<span class="muted-t">—</span>', cls: 'reason' },
+    { h: 'أحضر عذراً', v: x => x.br < 0 ? null : x.br, c: x => yn(x.br), cls: 'n' },
+    { h: 'الحالة', v: x => ({ todo: 0, rej: 1, ok: 2 })[x.st], c: x => `<span class="st ${AST[x.st].c}">${AST[x.st].t}</span>`, cls: 'n' }
+  ], list, { attrs: x => `data-abs="${x.i}" tabindex="0" title="اضغط لتسجيل العذر"`, limit: PAGE * 2, more: 'abs-more',
+    empty: inSel.length ? 'لا توجد غيابات بهذه الحالة.' : 'لا يوجد غياب في هذا الاختيار ✓' });
+  return [list.length, absList.length, 'غياب'];
+}
+
+// نافذة العذر
+let exCur = null, exBr = -1, exAcc = -1;
+function exPaint() {
+  for (const b of $('ex-brought').children) b.setAttribute('aria-pressed', +b.dataset.v === exBr);
+  for (const b of $('ex-accepted').children) b.setAttribute('aria-pressed', +b.dataset.v === exAcc);
+  $('ex-acc-row').hidden = exBr !== 1;
+}
+function exOpen(i) {
+  const x = absList.find(a => a.i === i); if (!x) return;
+  exCur = x; exBr = x.br; exAcc = x.acc;
+  $('ex-title').textContent = students[x.s].name;
+  $('ex-sub').textContent = 'غائب يوم ' + dShort(x.d) + ' · ' + (classes[x.c] ? classes[x.c].name : '');
+  $('ex-reason').value = x.why; $('ex-writer').value = x.wr; $('ex-msg').textContent = '';
+  exPaint();
+  $('exm').hidden = false;
+  setTimeout(() => $('ex-reason').focus(), 30);
+}
+function exClose() { $('exm').hidden = true; exCur = null; }
+async function exSave(e) {
+  e.preventDefault();
+  if (!exCur) return;
+  const x = exCur, btn = $('ex-save');
+  const body = { action: 'excuse', code: LS.get('code'), key: iso(x.d) + '|' + classes[x.c].code + '|' + students[x.s].code,
+    reason: $('ex-reason').value.trim(), brought: exBr === 1 ? true : exBr === 0 ? false : null,
+    accepted: exBr === 1 ? (exAcc === 1 ? true : exAcc === 0 ? false : null) : null, writer: $('ex-writer').value.trim() };
+  btn.disabled = true; btn.textContent = 'جارٍ الحفظ…'; $('ex-msg').textContent = '';
+  try {
+    await call(body);
+    const e2 = [body.reason, exBr, exBr === 1 ? exAcc : -1, body.writer];
+    exSet(x, e2);
+    RAW.att.x = RAW.att.x || {}; RAW.att.x[x.i] = e2;
+    idbGet('data').then(c => c && c.data && idbSet('data', Object.assign(c, { data: RAW })));
+    exClose(); render();
+  } catch (er) {
+    if (er.code === 'BAD_CODE') { exClose(); await logout(); $('gate-msg').textContent = 'رمز الدخول غير صالح أو أُوقف، أدخل رمزاً صحيحاً'; return; }
+    $('ex-msg').textContent = er.message;
+  } finally { btn.disabled = false; btn.textContent = 'حفظ'; }
+}
+
 /* ───────── الرسم العام ───────── */
-const RENDER = { att: renderAtt, rec: renderRec, rep: renderRep, q: renderQual, notes: renderNotes };
+const RENDER = { att: renderAtt, abs: renderAbs, rec: renderRec, rep: renderRep, q: renderQual, notes: renderNotes };
 function render() {
   if (!loaded) return;
   const t0 = performance.now();
   const ok = applyFilters();
+  absBadge(ok);
   if (!RENDER[tab]) { renderActive(); return; }
   const [a, z, u] = RENDER[tab](ok);
   renderActive();
@@ -672,7 +758,7 @@ function showTab(t) {
   for (const box of ['tabs', 'dtabs']) for (const x of $(box).children) x.setAttribute('aria-pressed', x.dataset.t === t);
   for (const k of Object.keys(TABS)) $('v-' + k).hidden = k !== t;
   const b = $('tabs').querySelector(`[data-t="${t}"]`);
-  $('tab-title').innerHTML = $('m-tab').innerHTML = b ? b.innerHTML : TABS[t];
+  $('tab-title').innerHTML = $('m-tab').innerHTML = b ? b.innerHTML.replace(/<i class="tbadge"[^>]*>[^<]*<\/i>/, '') : TABS[t];
 }
 function sheet(open) {
   const f = $('filters');
@@ -712,7 +798,7 @@ function bind() {
   $('dtabs').addEventListener('click', onTab);
   $('menu').addEventListener('click', () => drawer($('drawer').hidden));
   $('backdrop').addEventListener('click', () => { drawer(false); sheet(false); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { drawer(false); sheet(false); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('exm').hidden) { exClose(); return; } drawer(false); sheet(false); } });
   // الهاتف: الشريط المختصر + لوحة الفلاتر
   $('m-tab').addEventListener('click', () => drawer(true));
   $('m-prev').addEventListener('click', () => { if (canShift(-1)) { shiftPeriod(-1); render(); } });
@@ -723,6 +809,20 @@ function bind() {
   $('s-clear').addEventListener('click', () => { Object.assign(F, { cls: null, tch: null, lvl: null, typ: null, stu: null, subj: null, strat: null }); setPeriod('month', NDAYS - 1); render(); });
   $('ntypes').addEventListener('click', e => { const b = e.target.closest('button[data-n]'); if (!b) return; ntype = b.dataset.n; notesShown = 50; render(); });
   $('notes-more').addEventListener('click', () => { notesShown += 50; render(); });
+  // متابعة الغياب: الحالة + فتح نافذة العذر
+  $('astat').addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; astat = b.dataset.a; more['t-abs'] = false; render(); });
+  $('abs-more').addEventListener('click', () => { more['t-abs'] = !more['t-abs']; render(); });
+  $('t-abs').addEventListener('click', e => { if (e.target.closest('th')) return; const r = e.target.closest('tr[data-abs]'); if (r) exOpen(+r.dataset.abs); });
+  $('t-abs').addEventListener('keydown', e => { const r = e.key === 'Enter' && e.target.closest('tr[data-abs]'); if (r) exOpen(+r.dataset.abs); });
+  for (const id of ['ex-brought', 'ex-accepted']) $(id).addEventListener('click', e => {
+    const b = e.target.closest('button[data-v]'); if (!b) return; const v = +b.dataset.v;
+    if (id === 'ex-brought') { exBr = exBr === v ? -1 : v; if (exBr !== 1) exAcc = -1; } else exAcc = exAcc === v ? -1 : v;
+    exPaint();
+  });
+  $('ex-form').addEventListener('submit', exSave);
+  $('ex-close').addEventListener('click', exClose);
+  $('ex-cancel').addEventListener('click', exClose);
+  $('exm').addEventListener('click', e => { if (e.target === $('exm')) exClose(); });
   const onChip = e => {
     const b = e.target.closest('[data-x]'); if (!b) return; const x = b.dataset.x;
     if (x === 'all') Object.assign(F, { cls: null, tch: null, lvl: null, typ: null, stu: null, subj: null, strat: null }); else F[x] = null;

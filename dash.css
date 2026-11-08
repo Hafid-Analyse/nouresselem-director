@@ -334,3 +334,36 @@ svg.ti { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-wid
 .ntag.k-gen { color: var(--p); background: var(--p-soft); }
 .ntag.k-qur { color: var(--ok); background: var(--ok-soft); }
 .ntag.k-off { color: var(--warn); background: var(--warn-soft); }
+
+/* ───────── الإصدار 10: متابعة الغياب ───────── */
+.tabs button, .drawer-list button { position: relative; }
+.tbadge { font-style: normal; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--bad); color: #fff; font-family: var(--f-ui); font-size: .68rem; font-weight: 700; display: inline-grid; place-items: center; margin-inline-start: 2px; }
+.st { font-family: var(--f-ui); font-size: .72rem; border-radius: 99px; padding: 1px 9px; white-space: nowrap; }
+.st.todo { color: var(--muted); background: var(--surface-2); border: 1px dashed var(--line); }
+.st.ok { color: var(--ok); background: var(--ok-soft); }
+.st.rej { color: var(--bad); background: var(--bad-soft); }
+.tbl td.reason { min-width: 120px; white-space: normal; }
+
+.modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(4, 14, 30, .5); padding: 16px; }
+.modal-card { width: 100%; max-width: 420px; max-height: 90vh; overflow-y: auto; background: var(--surface); color: var(--ink); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 16px; display: grid; gap: 12px; }
+.modal-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.modal-h b { display: block; font-family: var(--f-ui); font-size: 1.05rem; }
+.modal-h small { color: var(--muted); font-family: var(--f-ui); font-size: .8rem; }
+.fld { display: grid; gap: 5px; }
+.fld > span { font-family: var(--f-ui); font-size: .8rem; color: var(--muted); }
+.fld input { width: 100%; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 12px; padding: 9px 12px; font-family: var(--f-text); font-size: .95rem; }
+.fld input:focus { outline: 2px solid var(--p-3); outline-offset: 1px; }
+.yn { display: flex; gap: 8px; }
+.yn button { flex: 1; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 12px; padding: 8px; font-family: var(--f-ui); font-weight: 600; }
+.yn button[aria-pressed="true"][data-v="1"] { background: var(--ok); border-color: var(--ok); color: #fff; }
+.yn button[aria-pressed="true"][data-v="0"] { background: var(--bad); border-color: var(--bad); color: #fff; }
+.modal .msg { min-height: 1.2em; margin: 0; color: var(--bad); font-size: .85rem; }
+.modal-f { display: flex; gap: 10px; }
+.modal-f .go { flex: 2; }
+.modal-f .clear2 { flex: 1; display: block; padding: 10px; }
+@media (max-width: 560px) { .modal { align-items: end; padding: 0; } .modal-card { max-width: none; border-radius: 22px 22px 0 0; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); } }
+.modal .xbtn { width: 32px; height: 32px; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--ink); font-size: 1.2rem; line-height: 1; flex: none; }
+.modal .clear2 { border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 12px; font-family: var(--f-ui); font-size: .9rem; }
+.modal .go:disabled { opacity: .65; cursor: progress; }
+#t-abs tbody tr[data-abs] { cursor: pointer; }
+#t-abs tbody tr[data-abs]:hover { background: var(--surface-2); }

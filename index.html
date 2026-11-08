@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Changa:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="dash.css?v=9">
+  <link rel="stylesheet" href="dash.css?v=10">
   <script>
     /* تطبيق الوضع المحفوظ قبل الرسم لتجنب الوميض */
     (function () { try { var t = JSON.parse(localStorage.getItem('nsd.theme')); if (t) document.documentElement.dataset.theme = t; } catch (e) {} })();
@@ -77,10 +77,22 @@
 </header>
 
 <div class="backdrop" id="backdrop" hidden></div>
+<!-- نافذة عذر الغياب -->
+<div class="modal" id="exm" role="dialog" aria-modal="true" aria-labelledby="ex-title" hidden>
+  <form class="modal-card" id="ex-form" autocomplete="off">
+    <div class="modal-h"><div><b id="ex-title"></b><small id="ex-sub"></small></div><button class="xbtn" id="ex-close" type="button" aria-label="إغلاق">×</button></div>
+    <label class="fld"><span>سبب الغياب</span><input id="ex-reason" type="text" maxlength="300" placeholder="مثال: مرض، سفر، ظرف عائلي"></label>
+    <div class="fld"><span>أحضر عذراً؟</span><div class="yn" id="ex-brought"><button type="button" data-v="1">نعم</button><button type="button" data-v="0">لا</button></div></div>
+    <div class="fld" id="ex-acc-row" hidden><span>العذر مقبول؟</span><div class="yn" id="ex-accepted"><button type="button" data-v="1">نعم</button><button type="button" data-v="0">لا</button></div></div>
+    <label class="fld"><span>ممن كُتب العذر</span><input id="ex-writer" type="text" maxlength="150" placeholder="مثال: الأب، الطبيب"></label>
+    <p class="msg" id="ex-msg" role="alert"></p>
+    <div class="modal-f"><button class="clear2" id="ex-cancel" type="button">إلغاء</button><button class="go" id="ex-save" type="submit">حفظ</button></div>
+  </form>
+</div>
 <nav class="drawer" id="drawer" aria-label="التبويبات" hidden>
   <div class="drawer-h"><svg class="logo" aria-hidden="true"><use href="#logo-mark"/></svg><b>لوحة المدير</b></div>
   <div class="drawer-list" id="dtabs">
-    <button type="button" data-t="att" aria-pressed="true"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>الحضور</span></button>
+    <button type="button" data-t="att" aria-pressed="true"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>الحضور</span></button><button type="button" data-t="abs" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 8 5 5M22 8l-5 5"/></svg><span>متابعة الغياب</span><i class="tbadge" hidden></i></button>
     <button type="button" data-t="rec" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg><span>الاستظهار</span></button>
     <button type="button" data-t="rep" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><span>جودة التقارير</span></button>
     <button type="button" data-t="q" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg><span>جودة التدريس</span></button>
@@ -109,7 +121,7 @@
     <div class="sheet-h sheet-only"><b>الفلاتر</b><button class="xbtn" id="s-close" type="button" aria-label="إغلاق">×</button></div>
     <div class="frow trow">
       <div class="tabs" id="tabs" role="group" aria-label="التقرير">
-        <button type="button" data-t="att" aria-pressed="true"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>الحضور</span></button><button type="button" data-t="rec" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg><span>الاستظهار</span></button><button type="button" data-t="rep" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><span>جودة التقارير</span></button><button type="button" data-t="q" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg><span>جودة التدريس</span></button><button type="button" data-t="notes" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg><span>الملاحظات</span></button>
+        <button type="button" data-t="att" aria-pressed="true"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>الحضور</span></button><button type="button" data-t="abs" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 8 5 5M22 8l-5 5"/></svg><span>متابعة الغياب</span><i class="tbadge" hidden></i></button><button type="button" data-t="rec" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg><span>الاستظهار</span></button><button type="button" data-t="rep" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><span>جودة التقارير</span></button><button type="button" data-t="q" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg><span>جودة التدريس</span></button><button type="button" data-t="notes" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg><span>الملاحظات</span></button>
       </div>
       <div class="tab-title" id="tab-title"></div>
     </div>
@@ -161,6 +173,19 @@
       <div class="c-h"><h2>تلاميذ للمتابعة</h2><p>كل تلميذ غاب يوماً أو أكثر، من الأكثر غياباً إلى الأقل. اضغط على تلميذ لعرض أرقامه وحده.</p></div>
       <div class="tbl-wrap"><table class="tbl" id="t-stu"></table></div>
       <button class="more" id="stu-more" type="button" hidden></button>
+    </section>
+  </div>
+
+  <!-- ①ب متابعة الغياب (لمن له تبويب الحضور) -->
+  <div class="view" id="v-abs" hidden>
+    <section class="card">
+      <div class="c-h">
+        <h2>الغيابات</h2>
+        <div class="seg" id="astat" role="group" aria-label="حالة الغياب"></div>
+        <p>كل غياب في الفترة المختارة. اضغط على سطر لتسجيل سبب الغياب والعذر، ويُحفظ مباشرة في صفحة الحضور.</p>
+      </div>
+      <div class="tbl-wrap"><table class="tbl" id="t-abs"></table></div>
+      <button class="more" id="abs-more" type="button" hidden></button>
     </section>
   </div>
 
@@ -254,6 +279,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crossfilter2/1.5.4/crossfilter.min.js"></script>
   <script src="config.js?v=1"></script>
-  <script src="dash.js?v=9"></script>
+  <script src="dash.js?v=10"></script>
 </body>
 </html>
