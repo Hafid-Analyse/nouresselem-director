@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Changa:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="dash.css?v=10">
+  <link rel="stylesheet" href="dash.css?v=11">
   <script>
     /* تطبيق الوضع المحفوظ قبل الرسم لتجنب الوميض */
     (function () { try { var t = JSON.parse(localStorage.getItem('nsd.theme')); if (t) document.documentElement.dataset.theme = t; } catch (e) {} })();
@@ -64,7 +64,7 @@
     <div>
       <h1>لوحة المدير</h1>
       <div class="school" id="school">مدرسة نور السلام القرآنية</div>
-      <div class="sub"><span class="sync" id="sync" aria-live="polite"></span></div>
+      <div class="sub"><span class="sync" id="sync" aria-live="polite"></span><span class="sync qinfo" id="qinfo" hidden></span></div>
     </div>
     <div class="bar-actions">
       <span class="who" id="who"></span>
@@ -77,6 +77,7 @@
 </header>
 
 <div class="backdrop" id="backdrop" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <!-- نافذة عذر الغياب -->
 <div class="modal" id="exm" role="dialog" aria-modal="true" aria-labelledby="ex-title" hidden>
   <form class="modal-card" id="ex-form" autocomplete="off">
@@ -279,6 +280,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crossfilter2/1.5.4/crossfilter.min.js"></script>
   <script src="config.js?v=1"></script>
-  <script src="dash.js?v=10"></script>
+  <script src="dash.js?v=11"></script>
 </body>
 </html>

@@ -367,3 +367,8 @@ svg.ti { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-wid
 .modal .go:disabled { opacity: .65; cursor: progress; }
 #t-abs tbody tr[data-abs] { cursor: pointer; }
 #t-abs tbody tr[data-abs]:hover { background: var(--surface-2); }
+/* الإصدار 11: طابور الحفظ في الخلفية */
+.qinfo { margin-inline-start: 8px; padding: 1px 8px; border-radius: 99px; background: rgba(255,255,255,.18); opacity: 1; }
+.pend { margin-inline-start: 4px; font-size: .8rem; }
+.toast { position: fixed; z-index: 60; inset-inline: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); margin: 0 auto; max-width: 460px; background: var(--ink); color: var(--surface); border-radius: 14px; padding: 10px 14px; font-family: var(--f-ui); font-size: .88rem; box-shadow: var(--shadow); text-align: center; }
+.toast.bad { background: var(--bad); color: #fff; }

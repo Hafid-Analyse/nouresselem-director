@@ -654,7 +654,7 @@ function renderAbs(ok) {
     { h: 'القسم', v: x => classes[x.c] ? classes[x.c].name : '', c: x => clsName(x.c), cls: 'nm' },
     { h: 'سبب الغياب', v: x => x.why || null, c: x => x.why ? esc(x.why) : '<span class="muted-t">—</span>', cls: 'reason' },
     { h: 'أحضر عذراً', v: x => x.br < 0 ? null : x.br, c: x => yn(x.br), cls: 'n' },
-    { h: 'الحالة', v: x => ({ todo: 0, rej: 1, ok: 2 })[x.st], c: x => `<span class="st ${AST[x.st].c}">${AST[x.st].t}</span>`, cls: 'n' }
+    { h: 'الحالة', v: x => ({ todo: 0, rej: 1, ok: 2 })[x.st], c: x => `<span class="st ${AST[x.st].c}">${AST[x.st].t}</span>${x.pend ? '<span class="pend" title="لم يصل إلى الشيت بعد">⏳</span>' : ''}`, cls: 'n' }
   ], list, { attrs: x => `data-abs="${x.i}" tabindex="0" title="اضغط لتسجيل العذر"`, limit: PAGE * 2, more: 'abs-more',
     empty: inSel.length ? 'لا توجد غيابات بهذه الحالة.' : 'لا يوجد غياب في هذا الاختيار ✓' });
   return [list.length, absList.length, 'غياب'];
@@ -678,25 +678,85 @@ function exOpen(i) {
   setTimeout(() => $('ex-reason').focus(), 30);
 }
 function exClose() { $('exm').hidden = true; exCur = null; }
-async function exSave(e) {
+// الحفظ في الخلفية: يتغير السطر فوراً، ويُحفظ الطلب في طابور داخل الجهاز (لا يضيع بإغلاق التطبيق أو انقطاع الإنترنت)
+// ثم يُرسل للخادم واحداً بعد الآخر. نجاح ← تختفي ⏳ · انقطاع ← إعادة المحاولة · رفض الخادم ← يرجع السطر كما كان + رسالة
+const absKey = x => iso(x.d) + '|' + classes[x.c].code + '|' + students[x.s].code;
+const exArr = x => [x.why, x.br, x.br === 1 ? x.acc : -1, x.wr];
+// أخطاء نهائية (لا فائدة من إعادة المحاولة) · كل ما عداها مؤقت: انقطاع، انشغال الشيت…
+const FINAL = ['BAD_KEY', 'NOT_FOUND', 'NOT_ABSENT', 'FORBIDDEN', 'BAD_ACTION'];
+let Q = LS.get('exq') || [], qBusy = false, qTimer = 0, qWait = 0, qSeq = Date.now();
+const qSave = () => LS.set('exq', Q);
+function exApply(x, e, pend) {
+  exSet(x, e); x.pend = pend;
+  RAW.att.x = RAW.att.x || {};
+  if (e[0] || e[1] > -1 || e[2] > -1 || e[3]) RAW.att.x[x.i] = e; else delete RAW.att.x[x.i];
+}
+const persistRaw = () => idbGet('data').then(c => c && c.data && idbSet('data', Object.assign(c, { data: RAW })));
+// بعد كل تنزيل للبيانات: ما زال في الطابور يُعاد تطبيقه فوق بيانات الخادم
+function qReapply() {
+  if (!Q.length || !absList.length) return;
+  const byKey = new Map(absList.map(x => [absKey(x), x]));
+  for (const q of Q) { const x = byKey.get(q.key); if (x) exApply(x, q.next, true); }
+}
+function qPaint() {
+  const n = Q.length, el = $('qinfo');
+  if (!el) return;
+  el.hidden = !n;
+  el.textContent = n ? (qWait ? `⏳ ${fmt(n)} عذر ينتظر الاتصال` : `⏳ جارٍ حفظ ${fmt(n)}…`) : '';
+}
+function toast(t, bad) {
+  const el = $('toast'); el.textContent = t; el.classList.toggle('bad', !!bad); el.hidden = false;
+  clearTimeout(toast.tm); toast.tm = setTimeout(() => { el.hidden = true; }, bad ? 7000 : 2500);
+}
+function exSave(e) {
   e.preventDefault();
   if (!exCur) return;
-  const x = exCur, btn = $('ex-save');
-  const body = { action: 'excuse', code: LS.get('code'), key: iso(x.d) + '|' + classes[x.c].code + '|' + students[x.s].code,
-    reason: $('ex-reason').value.trim(), brought: exBr === 1 ? true : exBr === 0 ? false : null,
-    accepted: exBr === 1 ? (exAcc === 1 ? true : exAcc === 0 ? false : null) : null, writer: $('ex-writer').value.trim() };
-  btn.disabled = true; btn.textContent = 'جارٍ الحفظ…'; $('ex-msg').textContent = '';
+  const x = exCur, key = absKey(x);
+  const next = [$('ex-reason').value.trim(), exBr, exBr === 1 ? exAcc : -1, $('ex-writer').value.trim()];
+  const old = Q.findIndex(q => q.key === key);
+  const item = { id: ++qSeq, key, code: LS.get('code'), name: students[x.s].name, day: dShort(x.d),
+    prev: old > -1 ? Q[old].prev : exArr(x), next };
+  if (old > -1) Q[old] = item; else Q.push(item);
+  qSave();
+  exApply(x, next, true); persistRaw();
+  exClose(); render(); qPaint();
+  qPump();
+}
+async function qPump() {
+  if (qBusy || !Q.length) { qPaint(); return; }
+  qBusy = true; clearTimeout(qTimer);
   try {
-    await call(body);
-    const e2 = [body.reason, exBr, exBr === 1 ? exAcc : -1, body.writer];
-    exSet(x, e2);
-    RAW.att.x = RAW.att.x || {}; RAW.att.x[x.i] = e2;
-    idbGet('data').then(c => c && c.data && idbSet('data', Object.assign(c, { data: RAW })));
-    exClose(); render();
-  } catch (er) {
-    if (er.code === 'BAD_CODE') { exClose(); await logout(); $('gate-msg').textContent = 'رمز الدخول غير صالح أو أُوقف، أدخل رمزاً صحيحاً'; return; }
-    $('ex-msg').textContent = er.message;
-  } finally { btn.disabled = false; btn.textContent = 'حفظ'; }
+    while (Q.length) {
+      const q = Q[0], n = q.next;
+      qWait = 0; qPaint();
+      let fail = null;
+      try {
+        await call({ action: 'excuse', code: q.code || LS.get('code'), key: q.key, reason: n[0],
+          brought: n[1] === 1 ? true : n[1] === 0 ? false : null,
+          accepted: n[1] === 1 ? (n[2] === 1 ? true : n[2] === 0 ? false : null) : null, writer: n[3] });
+      } catch (er) { fail = er; }
+      if (fail && FINAL.indexOf(fail.code) < 0 && fail.code !== 'BAD_CODE') {
+        // لا اتصال أو خطأ مؤقت ← يبقى في الطابور ونعيد المحاولة لاحقاً (10ث ← 20ث … حتى دقيقتين)
+        qWait = Math.min(120000, (qWait || 5000) * 2); qPaint();
+        qTimer = setTimeout(qPump, qWait); return;
+      }
+      const k = Q.findIndex(z => z.key === q.key), cur = Q[k];
+      if (!cur) continue;   // أُفرغ الطابور (خروج) أثناء الإرسال
+      const x = absList.find(a => absKey(a) === q.key);
+      if (fail && fail.code === 'BAD_CODE') { qWait = 1; qPaint(); toast('لم تُحفظ الأعذار: رمز الدخول لم يعد صالحاً', true); return; }
+      if (fail) {
+        // رفض نهائي من الخادم ← يرجع السطر كما كان قبل التعديل
+        Q.splice(k, 1); qSave();
+        if (x) { exApply(x, cur.prev, false); persistRaw(); }
+        toast(`لم يُحفظ عذر ${q.name} (${q.day}): ${fail.message}`, true);
+      } else if (cur.id === q.id) {
+        Q.splice(k, 1); qSave();
+        if (x) x.pend = false;
+      } // وإلا: عُدّل مرة أخرى أثناء الإرسال ← يبقى ويُرسل بالقيم الجديدة
+      if (loaded && tab === 'abs') render();
+    }
+  } finally { qBusy = false; qPaint(); }
+  if (!Q.length && loaded && tab === 'abs') render();
 }
 
 /* ───────── الرسم العام ───────── */
@@ -854,6 +914,7 @@ function bind() {
 function start(raw) {
   const prevUnit = loaded ? F.unit : null;
   load(raw);
+  qReapply();
   TKN = raw.lists.tk || [];
   // عند الفتح: الشهر الجاري. بعد التحديث: نفس الفترة
   if (!prevUnit) setPeriod('month', NDAYS - 1);
@@ -911,7 +972,7 @@ async function refresh() {
 }
 
 async function logout() {
-  LS.del('code'); LS.del('user'); await idbSet('data', null);
+  LS.del('code'); LS.del('user'); LS.del('exq'); Q = []; clearTimeout(qTimer); await idbSet('data', null);
   ver = ''; loaded = false; syncedAt = 0; USER = { name: '', title: '', tabs: [] };
   show('gate'); $('code').value = ''; $('gate-msg').textContent = '';
 }
@@ -928,8 +989,10 @@ async function boot() {
     const dark = getComputedStyle(document.documentElement).colorScheme.indexOf('dark') > -1;
     const t = dark ? 'light' : 'dark'; LS.set('theme', t); applyTheme(t);
   });
-  window.addEventListener('online', () => { if (loaded) refresh(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && loaded && Date.now() - syncedAt > 120000) refresh(); });
+  window.addEventListener('online', () => { qWait = 0; qPump(); if (loaded) refresh(); });
+  // تنبيه عند الإغلاق إن بقي عذر لم يصل للشيت
+  window.addEventListener('beforeunload', e => { if (Q.length) { e.preventDefault(); e.returnValue = ''; } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && Q.length && !qBusy) qPump(); if (!document.hidden && loaded && Date.now() - syncedAt > 120000) refresh(); });
 
   // الدخول برمز المستخدم (يُحفظ في الجهاز)
   $('gate-form').addEventListener('submit', async e => {
@@ -946,7 +1009,7 @@ async function boot() {
     } catch (x) { $('gate-msg').textContent = x.code === 'BAD_CODE' ? 'رمز الدخول غير صحيح' : x.message; }
     finally { btn.disabled = false; btn.textContent = 'دخول'; }
   });
-  $('logout').addEventListener('click', () => { if (confirm('الخروج من اللوحة؟ ستُحذف البيانات المحفوظة في هذا الجهاز.')) logout(); });
+  $('logout').addEventListener('click', () => { if (confirm((Q.length ? `تنبيه: يوجد ${fmt(Q.length)} عذر لم يصل إلى الشيت بعد وسيضيع.\n` : '') + 'الخروج من اللوحة؟ ستُحذف البيانات المحفوظة في هذا الجهاز.')) logout(); });
 
   const code = LS.get('code');
   if (!code) { show('gate'); return; }
@@ -957,6 +1020,7 @@ async function boot() {
     try { start(cached.data); setSync('ok'); } catch (e) { ver = ''; console.error(e); }
   } else show('boot');
   refresh();
+  qPump();
 }
 
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
