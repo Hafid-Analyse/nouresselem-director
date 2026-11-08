@@ -299,3 +299,38 @@ svg.ti { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-wid
 .tbl td.p-t { color: var(--p); font-weight: 600; }
 .tbl td.warn-t { color: var(--warn); font-weight: 600; }
 .tbl td.muted-t { color: var(--muted); }
+
+/* ───────── الإصدار 9: المستخدمون والأدوار + تبويب الملاحظات ───────── */
+.kpis { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+@media (max-width: 560px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* شاشة الدخول */
+.gate { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; background: var(--grad-bar); padding-inline: 16px; padding-block: 24px; }
+.gate-card { width: 100%; max-width: 360px; display: grid; gap: 12px; justify-items: center; color: #fff; text-align: center; }
+.gate-card .logo-full { width: 112px; height: 153px; }
+.gate h1 { font-family: var(--f-ui); margin: 0; font-size: 1.55rem; line-height: 1.2; }
+.gate .school { font-family: var(--f-deco); font-size: 1.15rem; opacity: .92; margin-top: -6px; }
+.gate form { width: 100%; display: grid; gap: 10px; background: var(--surface); color: var(--ink); border-radius: var(--r-lg); padding: 16px; box-shadow: var(--shadow); text-align: start; margin-top: 6px; }
+.gate label { display: grid; gap: 4px; }
+.gate label span { font-family: var(--f-ui); font-size: .8rem; color: var(--muted); }
+.gate input { width: 100%; border: 1px solid var(--line); background: var(--surface-2); border-radius: 12px; padding: 10px 12px; font-family: var(--f-ui); font-size: 1.15rem; letter-spacing: .25em; text-align: center; color: var(--ink); }
+.gate .go { width: 100%; }
+.gate .go:disabled { opacity: .65; cursor: progress; }
+.gate .msg { min-height: 1.4em; color: var(--bad); font-size: .85rem; margin: 0; text-align: center; }
+
+/* المستخدم الحالي في الشريط العلوي */
+.who { font-family: var(--f-ui); font-size: .78rem; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.25); padding: 4px 10px; border-radius: 99px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.who:empty { display: none; }
+@media (max-width: 560px) { .who { display: none; } }
+
+/* الملاحظات */
+.notes { display: grid; gap: 10px; }
+.note { border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; background: var(--surface-2); display: grid; gap: 6px; }
+.note-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-family: var(--f-ui); font-size: .78rem; color: var(--muted); }
+.note-h b { color: var(--ink); font-weight: 600; }
+.note-h .ntag { margin-inline-start: auto; }
+.note p { margin: 0; white-space: pre-wrap; line-height: 1.75; font-size: .95rem; }
+.ntag { font-family: var(--f-ui); font-size: .7rem; border-radius: 99px; padding: 1px 9px; white-space: nowrap; }
+.ntag.k-gen { color: var(--p); background: var(--p-soft); }
+.ntag.k-qur { color: var(--ok); background: var(--ok-soft); }
+.ntag.k-off { color: var(--warn); background: var(--warn-soft); }
