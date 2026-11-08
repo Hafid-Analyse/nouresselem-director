@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Changa:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="dash.css?v=8">
+  <link rel="stylesheet" href="dash.css?v=9">
   <script>
     /* تطبيق الوضع المحفوظ قبل الرسم لتجنب الوميض */
     (function () { try { var t = JSON.parse(localStorage.getItem('nsd.theme')); if (t) document.documentElement.dataset.theme = t; } catch (e) {} })();
@@ -34,6 +34,21 @@
   </svg>
 
   <!-- ① أول تنزيل للبيانات -->
+  <!-- ⓪ الدخول برمز المستخدم (صفحة مستخدمو_اللوحة في الشيت) -->
+  <section class="gate" id="gate" hidden>
+    <div class="gate-card">
+      <svg class="logo-full" aria-hidden="true"><use href="#logo-full"/></svg>
+      <h1>لوحة المدير</h1>
+      <div class="school">مدرسة نور السلام القرآنية</div>
+      <form id="gate-form" autocomplete="off">
+        <label for="code"><span>رمز الدخول</span>
+          <input id="code" type="password" inputmode="numeric" autocomplete="current-password" required></label>
+        <button class="go" id="go" type="submit">دخول</button>
+        <p class="msg" id="gate-msg" role="alert"></p>
+      </form>
+    </div>
+  </section>
+
   <section class="boot" id="boot" hidden>
     <div class="spinner" aria-hidden="true"></div>
     <p id="boot-msg">جارٍ تنزيل بيانات الموسم…</p>
@@ -52,9 +67,11 @@
       <div class="sub"><span class="sync" id="sync" aria-live="polite"></span></div>
     </div>
     <div class="bar-actions">
+      <span class="who" id="who"></span>
       <span class="tag" id="year"></span>
       <button class="ibtn" id="refresh" type="button" aria-label="تحديث البيانات" title="تحديث البيانات"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
       <button class="ibtn" id="theme" type="button" aria-label="تبديل الوضع الليلي" title="الوضع الليلي"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+      <button class="ibtn" id="logout" type="button" aria-label="خروج" title="خروج"><svg viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M9 8l-4 4 4 4"/><path d="M5 12h11"/></svg></button>
     </div>
   </div>
 </header>
@@ -67,7 +84,7 @@
     <button type="button" data-t="rec" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg><span>الاستظهار</span></button>
     <button type="button" data-t="rep" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><span>جودة التقارير</span></button>
     <button type="button" data-t="q" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg><span>جودة التدريس</span></button>
-    <button type="button" data-t="ch" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M8 17v-6"/><path d="M13 17V7"/><path d="M18 17v-4"/></svg><span>الرسوم</span></button>
+    <button type="button" data-t="notes" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg><span>الملاحظات</span></button>
   </div>
 </nav>
 
@@ -92,7 +109,7 @@
     <div class="sheet-h sheet-only"><b>الفلاتر</b><button class="xbtn" id="s-close" type="button" aria-label="إغلاق">×</button></div>
     <div class="frow trow">
       <div class="tabs" id="tabs" role="group" aria-label="التقرير">
-        <button type="button" data-t="att" aria-pressed="true"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>الحضور</span></button><button type="button" data-t="rec" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg><span>الاستظهار</span></button><button type="button" data-t="rep" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><span>جودة التقارير</span></button><button type="button" data-t="q" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg><span>جودة التدريس</span></button><button type="button" data-t="ch" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M8 17v-6"/><path d="M13 17V7"/><path d="M18 17v-4"/></svg><span>الرسوم</span></button>
+        <button type="button" data-t="att" aria-pressed="true"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>الحضور</span></button><button type="button" data-t="rec" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg><span>الاستظهار</span></button><button type="button" data-t="rep" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><span>جودة التقارير</span></button><button type="button" data-t="q" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg><span>جودة التدريس</span></button><button type="button" data-t="notes" aria-pressed="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg><span>الملاحظات</span></button>
       </div>
       <div class="tab-title" id="tab-title"></div>
     </div>
@@ -126,6 +143,8 @@
       <button class="go" id="s-done" type="button">تم</button>
     </div>
   </section>
+
+  <p class="empty card" id="notabs" hidden>لا توجد تبويبات مفعّلة لحسابك. اطلب من المدير تأشير تبويباتك في جدول المستخدمين بصفحة الإعدادات.</p>
 
   <!-- ① الحضور -->
   <div class="view" id="v-att">
@@ -216,51 +235,17 @@
     </section>
     </div>
   </div>
-  <!-- ⑤ الرسوم (لوقت لاحق) -->
-  <div class="view" id="v-ch" hidden>
+  <!-- ⑤ الملاحظات (لكل المستخدمين) -->
+  <div class="view" id="v-notes" hidden>
     <section class="card">
       <div class="c-h">
-        <h2>الحضور والاستظهار أسبوعاً بأسبوع</h2>
-        <div class="legend">
-          <span><i style="background:var(--p)"></i>الحضور</span>
-          <span><i style="background:var(--p-3)"></i>الاستظهار</span>
-          <span><i class="box" style="background:var(--hol);border:1px solid var(--line)"></i>عطلة</span>
-        </div>
-        <p>اسحب طرفي الشريط أسفل الرسم لاختيار فترة.</p>
+        <h2>ملاحظات المعلمين</h2>
+        <div class="seg" id="ntypes" role="group" aria-label="نوع الملاحظة"></div>
+        <p>ما كتبه المعلمون في السجل اليومي، الأحدث أولاً. الفلترة بالفترة والمعلم والقسم من شريط الفلاتر.</p>
       </div>
-      <div id="tl" role="img" aria-label="رسم الحضور والاستظهار الأسبوعي"></div>
+      <div class="notes" id="notes-list"></div>
+      <button class="more" id="notes-more" type="button" hidden></button>
     </section>
-    <section class="card">
-      <div class="c-h">
-        <h2>الأقسام</h2>
-        <div class="seg" id="metric" role="group" aria-label="المؤشر">
-          <button type="button" data-m="att" aria-pressed="true">الحضور</button>
-          <button type="button" data-m="rec" aria-pressed="false">الاستظهار</button>
-        </div>
-        <p>اضغط على قسم لتصفية اللوحة به.</p>
-      </div>
-      <div id="cls" role="img" aria-label="ترتيب الأقسام"></div>
-    </section>
-    <div class="grid2 even">
-      <section class="card">
-        <div class="c-h"><h2>الاستراتيجيات</h2><p>نسبة الدروس التي استُعملت فيها كل استراتيجية.</p></div>
-        <div id="q-st" role="img" aria-label="الاستراتيجيات"></div>
-      </section>
-      <section class="card">
-        <div class="c-h"><h2>مواد المنهاج</h2><p>عدد الدروس في كل مادة.</p></div>
-        <div id="q-sj" role="img" aria-label="المواد"></div>
-      </section>
-    </div>
-    <div class="grid2 even">
-      <section class="card">
-        <div class="c-h"><h2>حصص القرآن</h2><p>التوازن بين أنواع الحصص.</p></div>
-        <div id="q-qr" class="pie" role="img" aria-label="أنواع حصص القرآن"></div>
-      </section>
-      <section class="card">
-        <div class="c-h"><h2>أيام لم تُقدَّم فيها حصة</h2><p>حسب السبب.</p></div>
-        <div id="q-off" class="pie" role="img" aria-label="أسباب عدم التدريس"></div>
-      </section>
-    </div>
   </div>
   <p class="foot" id="foot"></p>
 </main>
@@ -268,8 +253,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crossfilter2/1.5.4/crossfilter.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
   <script src="config.js?v=1"></script>
-  <script src="dash.js?v=8"></script>
+  <script src="dash.js?v=9"></script>
 </body>
 </html>

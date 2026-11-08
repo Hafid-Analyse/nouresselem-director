@@ -59,10 +59,22 @@ async function gunzip(b64) {
   const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'));
   return JSON.parse(await new Response(stream).text());
 }
-async function fetchData(ver) {
-  const r = await call({ action: 'dash', ver: ver || '', raw: !canGz });
-  if (r.same) return { ver: r.ver, same: true };
-  return { ver: r.ver, data: r.data || await gunzip(r.gz) };
+async function fetchData(code, ver) {
+  const r = await call({ action: 'dash', code, ver: ver || '', raw: !canGz });
+  // التبويبات المسموحة تأتي من جدول المستخدمين في صفحة الإعدادات (خادم قديم بلا رموز ← لا دخول)
+  if (!Array.isArray(r.tabs)) { const e = new Error('الخادم لم يُحدَّث بعد: انشر نسخة Code.gs الجديدة'); e.code = 'OLD_SERVER'; throw e; }
+  const who = { name: r.name || '', title: r.title || '', tabs: r.tabs };
+  if (r.same) return { ver: r.ver, same: true, ...who };
+  return { ver: r.ver, data: r.data || await gunzip(r.gz), ...who };
+}
+
+/* ───────── المستخدم الحالي (جدول المستخدمين في صفحة الإعدادات) ───────── */
+let USER = { name: '', title: '', tabs: [] };
+const canSee = t => (USER.tabs || []).indexOf(t) > -1;
+function applyRole() {
+  for (const box of ['tabs', 'dtabs']) for (const b of $(box).children) b.hidden = !canSee(b.dataset.t);
+  $('who').textContent = [USER.name, USER.title].filter(Boolean).join(' · ');
+  $('notabs').hidden = (USER.tabs || []).length > 0;
 }
 
 /* ───────── المعجم والثوابت ───────── */
@@ -72,7 +84,7 @@ const wdOf = n => (n + 4) % 7;   // رقم اليوم منذ 1970 ← يوم ا�
 
 /* ───────── البيانات بعد التحويل (تُعاد عند كل تحديث) ───────── */
 let START, NDAYS, NW, TODAY, FIRST, weeks, HOLI, holWeeks, RAM, PERIODS, LV, CUR, ST, TRAD, TO, SJ, OFFR, QT, W, GR = [];
-let classes, teachers, students, att, logs, lessons, quran, offs;
+let classes, teachers, students, att, logs, lessons, quran, offs, notes = [];
 let cf, dDim, cDim, sDim, all, byWeek, byCls, byStu;
 let cf2, dDim2, cDim2, tDim2, sjDim, stDim, all2, byT2, bySj, bySt;
 
@@ -132,7 +144,7 @@ function load(raw) {
   }
 
   // السجل اليومي ← دروس + حصص قرآن + أيام لم تُقدَّم + تقارير مُرسلة
-  lessons = []; quran = []; offs = [];
+  lessons = []; quran = []; offs = []; notes = [];
   const sent = new Set();
   for (const l of raw.logs) {
     if (!inSeason(l[0])) continue;
@@ -140,7 +152,9 @@ function load(raw) {
     sent.add(d + '|' + c + '|' + t);
     classes[c].rows++;
     if (teachers[t].cls.indexOf(c) < 0) teachers[t].cls.push(c);
-    if (l[4]) { offs.push({ d, c, t, r: l[5] }); continue; }
+    const nt = (k, x) => { x = String(x || '').trim(); if (x) notes.push({ d, c, t, k, x }); };
+    if (l[4]) { nt('off', [OFFR[l[5]], l[11]].filter(Boolean).join(' · ')); offs.push({ d, c, t, r: l[5] }); continue; }
+    nt('gen', l[9]); nt('qur', l[10]);
     if (l[3] && l[6] > -1) quran.push({ d, c, t, q: l[6] });
     for (const x of l[7]) lessons.push({ d, c, t, sj: x[0], st: x[1], to: x[2], tk: x[3] });
   }
@@ -226,7 +240,7 @@ const F = { unit: 'month', d0: 0, d1: 0, cls: null, tch: null, lvl: null, typ: n
 let metric = 'att', tab = 'att', loaded = false, ver = '', syncedAt = 0;
 const more = { 't-stu': false, 't-rstu': false };
 const PAGE = 25;
-const TABS = { att: 'الحضور', rec: 'الاستظهار', rep: 'جودة التقارير', q: 'جودة التدريس', ch: 'الرسوم' };
+const TABS = { att: 'الحضور', rec: 'الاستظهار', rep: 'جودة التقارير', q: 'جودة التدريس', notes: 'الملاحظات' };
 
 function allowedByOthers() {
   const s = new Set();
@@ -321,17 +335,43 @@ function classStudents(c, Sx) {
 }
 const regCount = c => (classStu.get(c) || []).length;
 
+/* ───────── الحصص المقررة: أيام الدراسة في الفترة (حسب البرنامج الأسبوعي، دون العطل، حتى اليوم) ───────── */
+const isHolD = d => HOLI.some(h => d >= h[0] && d <= h[1]);
+const studies = (c, wd) => c.days.length ? c.days.indexOf(wd) > -1 : wd !== 5;
+function plannedDays(list) {
+  let n = 0;
+  for (let d = Math.max(F.d0, FIRST), end = Math.min(F.d1, NDAYS - 1); d <= end; d++) {
+    if (isHolD(d)) continue;
+    const wd = wdOf(START + d);
+    if (list.some(c => studies(c, wd))) n++;
+  }
+  return n;
+}
+// الأقسام المختارة (للبطاقة) · وقسم واحد (لشرط المتابعة)
+const selClasses = ok => classes.filter(c => c.on && ok.has(c.id) && (F.cls == null || c.id === F.cls));
+function plannedCard(ok) {
+  const n = plannedDays(selClasses(ok));
+  return { l: 'الحصص المقررة', v: fmt(n), s: 'أيام دراسة حتى اليوم (دون العطل)' };
+}
+function plannedByClass() {
+  const m = new Map();
+  return c => { if (!m.has(c)) m.set(c, classes[c] ? plannedDays([classes[c]]) : 0); return m.get(c); };
+}
+
 /* ───────── ① الحضور ───────── */
 function renderAtt(ok) {
   const { n, ab, l, r, C, Sx } = aggAtt();
   const rows = logs.filter(selOf(ok, true)), sent = rows.reduce((a, x) => a + x.ok, 0);
   const follow = [...Sx].filter(([, s]) => s.ab > 0).map(([id, s]) => ({ st: students[id], ...s }))
     .sort((a, z) => z.ab - a.ab || rate(a.r, a.n - a.ab) - rate(z.r, z.n - z.ab) || z.n - a.n);
+  // البطاقة: من غاب أكثر من ثلث الحصص المقررة لقسمه (الجدول يبقى: كل من غاب يوماً أو أكثر)
+  const pc = plannedByClass();
+  const heavy = [...Sx].filter(([id, s]) => { const p = pc(students[id].c); return p > 0 && s.ab > p / 3; }).length;
   $('kpis').innerHTML = kpiHTML([
-    { l: 'الحضور', v: fmt(n - ab), of: fmt(n), s: `غياب: ${fmt(ab)} · تأخر: ${fmt(l)}` },
-    { l: 'الاستظهار', v: fmt(r), of: fmt(n - ab) + ' حاضر', s: `لم يستظهر: ${fmt(n - ab - r)}` },
+    plannedCard(ok),
+    { l: 'نسبة الحضور', v: pctTxt(rate(n - ab, n)), s: `حاضر ${fmt(n - ab)} من ${fmt(n)} · غياب ${fmt(ab)} · تأخر ${fmt(l)}` },
     { l: 'التقارير المُرسلة', v: fmt(sent), of: fmt(rows.length), s: rows.length ? `لم تُرسل: ${fmt(rows.length - sent)}` : 'لا توجد أيام دراسة في الاختيار', bad: rows.length > sent },
-    { l: 'تلاميذ للمتابعة', v: fmt(follow.length), of: fmt(Sx.size) + ' تلميذ', s: 'غابوا يوماً أو أكثر', bad: follow.length > 0 }
+    { l: 'تلاميذ للمتابعة', v: fmt(heavy), of: fmt(Sx.size) + ' تلميذ', s: 'غابوا أكثر من ثلث الحصص المقررة', bad: heavy > 0 }
   ]);
 
   const cls = classes.filter(c => ok.has(c.id) && (F.cls == null || c.id === F.cls) && (C.has(c.id) || regCount(c.id)))
@@ -380,11 +420,13 @@ function renderRec(ok) {
   const { n, ab, r, C, Sx, TG } = aggAtt(), pr = n - ab, showNg = TG.ng > 0;
   const follow = [...Sx].map(([id, s]) => ({ st: students[id], ...s, nr: s.n - s.ab - s.r })).filter(x => x.nr > 0)
     .sort((a, z) => z.nr - a.nr || rate(a.r, a.n - a.ab) - rate(z.r, z.n - z.ab));
+  // البطاقة: من لم يستظهر نصف ما حضره أو أكثر (الجدول يبقى: كل من لم يستظهر مرة أو أكثر)
+  const half = follow.filter(x => x.n - x.ab > 0 && x.nr >= (x.n - x.ab) / 2).length;
   $('kpis-rec').innerHTML = kpiHTML([
-    { l: 'الاستظهار', v: fmt(r), of: fmt(pr) + ' حاضر', s: GR.map((g, i) => `${esc(g)}: ${fmt(TG.gr[i])}`).concat(showNg ? [`بدون تقدير: ${fmt(TG.ng)}`] : []).join(' · ') || 'مرات الاستظهار في الفترة' },
-    { l: 'لم يستظهر', v: fmt(pr - r), of: fmt(pr) + ' حاضر', s: 'حضر ولم يستظهر', bad: pr > r },
-    { l: 'الحاضرون', v: fmt(pr), of: fmt(n), s: `غياب: ${fmt(ab)} (لا يُحسب في الاستظهار)` },
-    { l: 'تلاميذ للمتابعة', v: fmt(follow.length), of: fmt(Sx.size) + ' تلميذ', s: 'لم يستظهروا مرة أو أكثر', bad: follow.length > 0 }
+    plannedCard(ok),
+    { l: 'نسبة الاستظهار', v: pctTxt(rate(r, pr)), s: `${fmt(r)} من ${fmt(pr)} حاضر · ` + (GR.map((g, i) => `${esc(g)} ${fmt(TG.gr[i])}`).concat(showNg ? [`بدون تقدير ${fmt(TG.ng)}`] : []).join(' · ')) },
+    { l: 'نسبة عدم الاستظهار', v: pctTxt(rate(pr - r, pr)), s: `${fmt(pr - r)} من ${fmt(pr)} حاضر لم يستظهروا`, bad: pr > r },
+    { l: 'تلاميذ للمتابعة', v: fmt(half), of: fmt(Sx.size) + ' تلميذ', s: 'لم يستظهروا نصف ما حضروه أو أكثر', bad: half > 0 }
   ]);
   const cls = classes.filter(c => ok.has(c.id) && (F.cls == null || c.id === F.cls) && (C.has(c.id) || regCount(c.id)))
     .map(c => { const g = C.get(c.id) || EMPTY_C(); return { c, g, reg: regCount(c.id), pr: g.n - g.ab }; });
@@ -452,6 +494,7 @@ function renderRep(ok) {
   const missAll = main.filter(x => !x.ok).length, okAll = [...per.values()].reduce((s, q) => s + q.ok, 0), lateAll = [...per.values()].reduce((s, q) => s + q.late, 0);
   const sentMain = main.length - missAll;
   $('kpis-rep').innerHTML = kpiHTML([
+    plannedCard(ok),
     { l: 'التقارير المُرسلة', v: fmt(sentMain), of: fmt(main.length) + ' مطلوب', s: sub.length ? `+ ${fmt(sub.length)} من معلمي المواد` : 'من معلمي الأقسام' },
     { l: 'في وقتها', v: fmt(okAll), s: 'في يوم الحصة أو اليوم الموالي' },
     { l: 'متأخرة', v: fmt(lateAll), s: 'بعد يومين فأكثر', bad: lateAll > 0 },
@@ -496,6 +539,7 @@ function renderQual(ok) {
   const offRows = offs.filter(selOf(ok, true)), qRows = quran.filter(selOf(ok, true));
   const tradNames = [...TRAD].map(i => ST[i]).join('، ');
   $('kpis2').innerHTML = kpiHTML([
+    plannedCard(ok),
     { l: 'الدروس المسجلة', v: fmt(n), s: 'في الفترة والاختيار الحاليين' },
     { l: 'دروس بوسيلة تعليمية', v: fmt(to), of: fmt(n), s: `بلا وسيلة: ${fmt(n - to)}` },
     { l: 'دروس تفاعلية', v: fmt(ia), of: fmt(n), s: tradNames ? 'فيها استراتيجية غير ' + esc(tradNames) : 'فيها استراتيجية واحدة على الأقل' },
@@ -551,98 +595,32 @@ function renderQual(ok) {
 }
 let TKN = [];
 
-/* ───────── ⑤ الرسوم ───────── */
-let tl, cl, stc, sjc, qrc, offc;
-const chartBase = () => ({ animationDuration: 300, animationDurationUpdate: 260, textStyle: { fontFamily: 'Changa, system-ui, sans-serif', color: css('--muted') } });
-const tipBox = () => ({ backgroundColor: css('--surface'), borderColor: css('--line'), textStyle: { color: css('--ink'), fontFamily: 'Changa, sans-serif', fontSize: 12 }, extraCssText: 'box-shadow:' + css('--shadow') + ';border-radius:12px;direction:rtl;text-align:right' });
-function buildTimeline() {
-  const p = css('--p'), p3 = css('--p-3');
-  const area = c => ({ type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: c + '33' }, { offset: 1, color: c + '00' }] });
-  const marks = holWeeks.map(h => [{ name: h[2], xAxis: weeks[h[0]] }, { xAxis: weeks[h[1]] }]);
-  if (RAM) marks.push([{ name: 'رمضان', xAxis: weeks[wOf(RAM[0])], itemStyle: { color: css('--ram') } }, { xAxis: weeks[wOf(RAM[1])] }]);
-  tl.setOption(Object.assign(chartBase(), {
-    grid: { top: 14, right: 40, left: 26, bottom: 24 },
-    tooltip: Object.assign(tipBox(), { trigger: 'axis', valueFormatter: v => v == null ? '—' : v.toFixed(1) + '%' }),
-    xAxis: { type: 'category', data: weeks, inverse: true, boundaryGap: false, axisLine: { lineStyle: { color: css('--line') } }, axisTick: { show: false }, axisLabel: { color: css('--muted'), fontSize: 11, hideOverlap: true } },
-    yAxis: { type: 'value', position: 'right', min: 0, max: 100, interval: 25, splitLine: { lineStyle: { color: css('--grid') } }, axisLabel: { color: css('--muted'), formatter: '{value}%', fontSize: 11 } },
-    series: [
-      { name: 'الحضور', type: 'line', smooth: .3, symbol: 'circle', symbolSize: 6, showSymbol: NW < 3, connectNulls: false, lineStyle: { width: 2.5, color: p }, itemStyle: { color: p }, areaStyle: { color: area(p) }, data: [],
-        markArea: { silent: true, itemStyle: { color: css('--hol') }, label: { show: innerWidth > 560, color: css('--muted'), fontSize: 11, position: 'insideTop' }, data: marks } },
-      { name: 'الاستظهار', type: 'line', smooth: .3, symbol: 'circle', symbolSize: 6, showSymbol: NW < 3, connectNulls: false, lineStyle: { width: 2.5, color: p3 }, itemStyle: { color: p3 }, areaStyle: { color: area(p3) }, data: [] }
-    ]
-  }), true);
-}
-function buildHbar(ch, rightPad) {
-  ch.setOption(Object.assign(chartBase(), {
-    grid: { top: 4, right: rightPad || 118, left: 58, bottom: 4 },
-    tooltip: Object.assign(tipBox(), { trigger: 'item', formatter: q => q.data.tip }),
-    xAxis: { type: 'value', inverse: true, min: 0, max: 100, show: false },
-    yAxis: { type: 'category', position: 'right', inverse: true, data: [], axisLine: { show: false }, axisTick: { show: false },
-      axisLabel: { color: css('--ink'), fontSize: 12, fontFamily: 'Changa, sans-serif', margin: 10, width: (rightPad || 118) - 14, overflow: 'truncate' } },
-    series: [{ type: 'bar', barWidth: 13, data: [], showBackground: true, backgroundStyle: { color: css('--surface-2'), borderRadius: 7 }, itemStyle: { borderRadius: 7 },
-      label: { show: true, position: 'left', distance: 6, color: css('--ink'), fontFamily: 'Changa, sans-serif', fontSize: 12, formatter: q => q.data.lbl }, cursor: 'pointer' }]
-  }), true);
-}
-function setBars(ch, items, max) {
-  const hh = Math.max(90, items.length * 26 + 10) + 'px';
-  if (ch.getDom().style.height !== hh) { ch.getDom().style.height = hh; ch.resize(); }
-  ch.setOption({ xAxis: { max }, yAxis: { data: items.map(x => x.name) }, series: [{ data: items }] });
-}
-function pie(ch, names, counts, colors, unit) {
-  const n = counts.reduce((a, b) => a + b, 0);
-  ch.setOption(Object.assign(chartBase(), {
-    tooltip: Object.assign(tipBox(), { trigger: 'item', formatter: q => `<b>${esc(q.name)}</b><br>${fmt(q.value)} · ${q.percent}%` }),
-    graphic: [{ type: 'text', left: 'center', top: 'middle', style: { text: n ? fmt(n) + '\n' + unit : 'لا يوجد', fill: css(n ? '--ink' : '--muted'), font: '600 15px Changa, sans-serif', align: 'center', lineHeight: 20 } }],
-    series: [{ type: 'pie', radius: ch.getWidth() < 420 ? ['40%', '60%'] : ['50%', '74%'], center: ['50%', '50%'], padAngle: 2, itemStyle: { borderRadius: 6, borderColor: css('--surface'), borderWidth: 2 },
-      label: { color: css('--ink'), fontFamily: 'Changa, sans-serif', fontSize: 12, formatter: '{b}\n{d}%' }, labelLine: { lineStyle: { color: css('--line') } },
-      data: names.map((nm, i) => ({ name: nm, value: counts[i], itemStyle: { color: colors[i % colors.length] } })).filter(x => x.value > 0) }]
-  }), true);
-}
-function buildCharts() { buildTimeline(); buildHbar(cl, 104); buildHbar(stc, 128); buildHbar(sjc, 118); }
-function ensureCharts() {
-  if (tl) return;
-  tl = echarts.init($('tl')); cl = echarts.init($('cls'));
-  stc = echarts.init($('q-st')); sjc = echarts.init($('q-sj')); qrc = echarts.init($('q-qr')); offc = echarts.init($('q-off'));
-  buildCharts();
-  cl.on('click', q => { const id = q.data && q.data.key; if (id == null) return; F.cls = F.cls === id ? null : id; F.stu = null; render(); });
-  stc.on('click', q => { if (q.data.key == null) return; F.strat = F.strat === q.data.key ? null : q.data.key; render(); });
-  sjc.on('click', q => { if (q.data.key == null) return; F.subj = F.subj === q.data.key ? null : q.data.key; render(); });
-  const ro = new ResizeObserver(() => [tl, cl, stc, sjc, qrc, offc].forEach(c => c.resize()));
-  ['tl', 'cls', 'q-st', 'q-sj', 'q-qr', 'q-off'].forEach(id => ro.observe($(id).parentElement));
-}
-function renderCharts(ok) {
-  ensureCharts();
-  [tl, cl, stc, sjc, qrc, offc].forEach(c => c.resize());
-  // الخط الزمني يعرض الموسم كله (سياق)، والفترة المختارة تؤثر في باقي الرسوم
-  const wk = Array.from({ length: NW }, () => [null, null]);
-  for (const g of byWeek.all()) if (g.value.n && g.key < NW) wk[g.key] = [+(attR(g.value) * 100).toFixed(2), recR(g.value) == null ? null : +(recR(g.value) * 100).toFixed(2)];
-  tl.setOption({ series: [{ data: wk.map(x => x[0]) }, { data: wk.map(x => x[1]) }] });
-  const p = css('--p'), w = css('--warn'), b = css('--bad'), mu = css('--muted');
-  const fn = metric === 'att' ? attR : recR, th = metric === 'att' ? [.92, .85] : [.75, .6];
-  const cs = byCls.all().filter(g => ok.has(g.key) && g.value.n).map(g => ({ c: classes[g.key], v: fn(g.value), g: g.value })).filter(x => x.v != null).sort((a, z) => z.v - a.v);
-  setBars(cl, cs.map(x => ({ value: x.v * 100, key: x.c.id, name: x.c.name, lbl: (x.v * 100).toFixed(1) + '%',
-    itemStyle: { color: x.v >= th[0] ? p : x.v >= th[1] ? w : b, opacity: F.cls != null && x.c.id !== F.cls ? .28 : 1 },
-    tip: `<b>${esc(x.c.name)}</b><br>حاضر ${fmt(x.g.n - x.g.ab)} من ${fmt(x.g.n)} · استظهر ${fmt(x.g.r)}` })), 100);
-  let base = all2.value().n;
-  if (F.strat != null) { stDim.filterAll(); base = all2.value().n; stDim.filterExact(F.strat); }
-  const st = bySt.all().filter(g => g.value > 0).map(g => ({ key: g.key, v: base ? g.value / base : 0, n: g.value })).sort((a, z) => z.v - a.v);
-  setBars(stc, st.map(x => ({ value: x.v * 100, key: x.key, name: ST[x.key], lbl: (x.v * 100).toFixed(0) + '%',
-    itemStyle: { color: TRAD.has(x.key) ? mu : p, opacity: F.strat != null && F.strat !== x.key ? .28 : 1 }, tip: `<b>${esc(ST[x.key])}</b><br>${fmt(x.n)} درس من ${fmt(base)}` })), 100);
-  const sj = bySj.all().filter(g => g.value > 0).map(g => ({ key: g.key, n: g.value })).sort((a, z) => z.n - a.n);
-  setBars(sjc, sj.map(x => ({ value: x.n, key: x.key, name: SJ[x.key], lbl: fmt(x.n) + ' درس',
-    itemStyle: { color: p, opacity: F.subj != null && F.subj !== x.key ? .28 : 1 }, tip: `<b>${esc(SJ[x.key])}</b><br>${fmt(x.n)} درس` })), Math.max(1, ...sj.map(x => x.n)) * 1.02);
-  const offRows = offs.filter(selOf(ok, true)), qRows = quran.filter(selOf(ok, true));
-  pie(qrc, QT, QT.map((_, i) => qRows.filter(q => q.q === i).length), [p, css('--p-3'), css('--ok'), w], 'حصة');
-  pie(offc, OFFR, OFFR.map((_, i) => offRows.filter(o => o.r === i).length), [w, p, b, mu, css('--p-3'), css('--ok')], 'يوماً');
-  return [all.value().n, att.length, 'سطر'];
+/* ───────── ⑤ الملاحظات ───────── */
+const NK = { gen: { t: 'عامة', c: 'k-gen' }, qur: { t: 'قرآن', c: 'k-qur' }, off: { t: 'لم تُقدَّم', c: 'k-off' } };
+let ntype = 'all', notesShown = 50;
+function renderNotes(ok) {
+  const inSel = notes.filter(selOf(ok, true));
+  const cnt = { all: inSel.length, gen: 0, qur: 0, off: 0 };
+  inSel.forEach(x => cnt[x.k]++);
+  $('ntypes').innerHTML = [['all', 'الكل']].concat(Object.keys(NK).map(k => [k, NK[k].t]))
+    .map(([k, t]) => `<button type="button" data-n="${k}" aria-pressed="${ntype === k}">${t} (${fmt(cnt[k])})</button>`).join('');
+  const list = inSel.filter(x => ntype === 'all' || x.k === ntype).sort((a, z) => z.d - a.d || a.c - z.c);
+  const shown = list.slice(0, notesShown);
+  $('notes-list').innerHTML = shown.length ? shown.map(x => `<article class="note">
+      <div class="note-h"><b>${dShort(x.d)}</b><span>${clsName(x.c)}</span><span>${esc(teachers[x.t] ? teachers[x.t].name : '')}</span><span class="ntag ${NK[x.k].c}">${NK[x.k].t}</span></div>
+      <p>${esc(x.x)}</p></article>`).join('')
+    : '<div class="empty">لا توجد ملاحظات في هذا الاختيار.</div>';
+  const b = $('notes-more'); b.hidden = list.length <= notesShown; b.textContent = 'عرض المزيد (' + fmt(list.length - shown.length) + ')';
+  return [list.length, notes.length, 'ملاحظة'];
 }
 
 /* ───────── الرسم العام ───────── */
-const RENDER = { att: renderAtt, rec: renderRec, rep: renderRep, q: renderQual, ch: renderCharts };
+const RENDER = { att: renderAtt, rec: renderRec, rep: renderRep, q: renderQual, notes: renderNotes };
 function render() {
   if (!loaded) return;
   const t0 = performance.now();
   const ok = applyFilters();
+  if (!RENDER[tab]) { renderActive(); return; }
   const [a, z, u] = RENDER[tab](ok);
   renderActive();
   const ms = performance.now() - t0, sp = $('speed');
@@ -688,7 +666,8 @@ function renderActive() {
 }
 const TAB_IC = {};
 function showTab(t) {
-  if (!TABS[t]) t = 'att';
+  if (!TABS[t] || !canSee(t)) t = Object.keys(TABS).find(canSee);
+  if (!t) { for (const k of Object.keys(TABS)) $('v-' + k).hidden = true; tab = 'none'; return; }
   tab = t; LS.set('tab', t);
   for (const box of ['tabs', 'dtabs']) for (const x of $(box).children) x.setAttribute('aria-pressed', x.dataset.t === t);
   for (const k of Object.keys(TABS)) $('v-' + k).hidden = k !== t;
@@ -742,8 +721,8 @@ function bind() {
   $('s-close').addEventListener('click', () => sheet(false));
   $('s-done').addEventListener('click', () => sheet(false));
   $('s-clear').addEventListener('click', () => { Object.assign(F, { cls: null, tch: null, lvl: null, typ: null, stu: null, subj: null, strat: null }); setPeriod('month', NDAYS - 1); render(); });
-  $('metric').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; metric = b.dataset.m;
-    for (const x of $('metric').children) x.setAttribute('aria-pressed', x === b); render(); });
+  $('ntypes').addEventListener('click', e => { const b = e.target.closest('button[data-n]'); if (!b) return; ntype = b.dataset.n; notesShown = 50; render(); });
+  $('notes-more').addEventListener('click', () => { notesShown += 50; render(); });
   const onChip = e => {
     const b = e.target.closest('[data-x]'); if (!b) return; const x = b.dataset.x;
     if (x === 'all') Object.assign(F, { cls: null, tch: null, lvl: null, typ: null, stu: null, subj: null, strat: null }); else F[x] = null;
@@ -765,7 +744,7 @@ function bind() {
   document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches && e.target.matches('tr[data-k]')) e.target.click(); });
   $('stu-more').addEventListener('click', () => { more['t-stu'] = !more['t-stu']; render(); });
   $('rstu-more').addEventListener('click', () => { more['t-rstu'] = !more['t-rstu']; render(); });
-  const rebuild = () => { if (!loaded) return; if (tl) buildCharts(); render(); };
+  const rebuild = () => { if (loaded) render(); };
   new MutationObserver(rebuild).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rebuild); } catch (e) {}
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(rebuild);
@@ -788,9 +767,9 @@ function start(raw) {
   show('app');
   $('school').textContent = raw.school || 'مدرسة نور السلام القرآنية';
   $('year').textContent = (raw.year ? raw.year + ' · ' : '') + 'اليوم ' + dLabel(NDAYS - 1);
-  if (!loaded) showTab(LS.get('tab') || 'att');
+  applyRole();
+  if (!loaded || !canSee(tab)) showTab(LS.get('tab') || 'att');
   fillSelects();
-  if (tl) buildCharts();
   loaded = true;
   bind();
   render();
@@ -798,6 +777,7 @@ function start(raw) {
 }
 
 function show(which) {
+  $('gate').hidden = which !== 'gate';
   $('boot').hidden = which !== 'boot';
   $('app').hidden = which !== 'app';
 }
@@ -812,17 +792,28 @@ function setSync(state, msg) {
 }
 
 async function refresh() {
+  const code = LS.get('code');
+  if (!code) return;
   setSync('loading');
   try {
-    const r = await fetchData(ver);
+    const r = await fetchData(code, ver);
     syncedAt = Date.now();
-    if (!r.same) { ver = r.ver; start(r.data); idbSet('data', { ver, data: r.data, at: syncedAt }); }
-    else idbGet('data').then(c => c && idbSet('data', Object.assign(c, { at: syncedAt })));
+    const roleChanged = JSON.stringify([r.tabs, r.name, r.title]) !== JSON.stringify([USER.tabs, USER.name, USER.title]);
+    USER = { name: r.name, title: r.title, tabs: r.tabs }; LS.set('user', USER);
+    if (!r.same) { ver = r.ver; start(r.data); idbSet('data', { ver, code, user: USER, data: r.data, at: syncedAt }); }
+    else { if (roleChanged && loaded) { applyRole(); showTab(tab); render(); } idbGet('data').then(c => c && idbSet('data', Object.assign(c, { at: syncedAt, user: USER }))); }
     setSync('ok');
   } catch (e) {
+    if (e.code === 'BAD_CODE') { await logout(); $('gate-msg').textContent = 'رمز الدخول غير صالح أو أُوقف، أدخل رمزاً صحيحاً'; return; }
     setSync('err', e.message);
     if (!loaded) { show('boot'); $('boot-msg').textContent = e.message; $('boot-retry').hidden = false; }
   }
+}
+
+async function logout() {
+  LS.del('code'); LS.del('user'); await idbSet('data', null);
+  ver = ''; loaded = false; syncedAt = 0; USER = { name: '', title: '', tabs: [] };
+  show('gate'); $('code').value = ''; $('gate-msg').textContent = '';
 }
 
 function applyTheme(t) {
@@ -840,9 +831,29 @@ async function boot() {
   window.addEventListener('online', () => { if (loaded) refresh(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && loaded && Date.now() - syncedAt > 120000) refresh(); });
 
+  // الدخول برمز المستخدم (يُحفظ في الجهاز)
+  $('gate-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const code = $('code').value.trim(), btn = $('go');
+    if (!code) { $('gate-msg').textContent = 'أدخل رمز الدخول'; return; }
+    btn.disabled = true; btn.textContent = 'جارٍ تنزيل البيانات…'; $('gate-msg').textContent = '';
+    try {
+      const r = await fetchData(code, '');
+      LS.set('code', code); USER = { name: r.name, title: r.title, tabs: r.tabs }; LS.set('user', USER);
+      ver = r.ver; syncedAt = Date.now();
+      start(r.data); setSync('ok');
+      idbSet('data', { ver, code, user: USER, data: r.data, at: syncedAt });
+    } catch (x) { $('gate-msg').textContent = x.code === 'BAD_CODE' ? 'رمز الدخول غير صحيح' : x.message; }
+    finally { btn.disabled = false; btn.textContent = 'دخول'; }
+  });
+  $('logout').addEventListener('click', () => { if (confirm('الخروج من اللوحة؟ ستُحذف البيانات المحفوظة في هذا الجهاز.')) logout(); });
+
+  const code = LS.get('code');
+  if (!code) { show('gate'); return; }
+  USER = LS.get('user') || USER;
   const cached = await idbGet('data');
-  if (cached && cached.data) {
-    ver = cached.ver; syncedAt = cached.at || 0;
+  if (cached && cached.data && cached.code === code) {
+    ver = cached.ver; syncedAt = cached.at || 0; if (cached.user) USER = cached.user;
     try { start(cached.data); setSync('ok'); } catch (e) { ver = ''; console.error(e); }
   } else show('boot');
   refresh();
