@@ -61,23 +61,20 @@ async function gunzip(b64) {
 }
 async function fetchData(code, ver) {
   const r = await call({ action: 'dash', code, ver: ver || '', raw: !canGz });
-  const who = { role: r.role || 'dir', name: r.name || '' };
+  // التبويبات المسموحة تأتي من جدول المستخدمين في صفحة الإعدادات (خادم قديم بلا رموز ← لا دخول)
+  if (!Array.isArray(r.tabs)) { const e = new Error('الخادم لم يُحدَّث بعد: انشر نسخة Code.gs الجديدة'); e.code = 'OLD_SERVER'; throw e; }
+  const who = { name: r.name || '', title: r.title || '', tabs: r.tabs };
   if (r.same) return { ver: r.ver, same: true, ...who };
   return { ver: r.ver, data: r.data || await gunzip(r.gz), ...who };
 }
 
-/* ───────── المستخدمون والأدوار (صفحة مستخدمو_اللوحة) ───────── */
-const ROLES = {
-  dir: { label: 'المدير', tabs: ['att', 'rec', 'rep', 'q', 'notes'] },
-  ped: { label: 'المساعد البيداغوجي', tabs: ['rec', 'rep', 'q', 'notes'] },
-  adm: { label: 'الإداري', tabs: ['att', 'notes'] }
-};
-let USER = { role: 'dir', name: '' };
-const canSee = t => (ROLES[USER.role] || ROLES.dir).tabs.indexOf(t) > -1;
+/* ───────── المستخدم الحالي (جدول المستخدمين في صفحة الإعدادات) ───────── */
+let USER = { name: '', title: '', tabs: [] };
+const canSee = t => (USER.tabs || []).indexOf(t) > -1;
 function applyRole() {
   for (const box of ['tabs', 'dtabs']) for (const b of $(box).children) b.hidden = !canSee(b.dataset.t);
-  const r = ROLES[USER.role] || ROLES.dir;
-  $('who').textContent = (USER.name ? USER.name + ' · ' : '') + r.label;
+  $('who').textContent = [USER.name, USER.title].filter(Boolean).join(' · ');
+  $('notabs').hidden = (USER.tabs || []).length > 0;
 }
 
 /* ───────── المعجم والثوابت ───────── */
@@ -623,6 +620,7 @@ function render() {
   if (!loaded) return;
   const t0 = performance.now();
   const ok = applyFilters();
+  if (!RENDER[tab]) { renderActive(); return; }
   const [a, z, u] = RENDER[tab](ok);
   renderActive();
   const ms = performance.now() - t0, sp = $('speed');
@@ -669,6 +667,7 @@ function renderActive() {
 const TAB_IC = {};
 function showTab(t) {
   if (!TABS[t] || !canSee(t)) t = Object.keys(TABS).find(canSee);
+  if (!t) { for (const k of Object.keys(TABS)) $('v-' + k).hidden = true; tab = 'none'; return; }
   tab = t; LS.set('tab', t);
   for (const box of ['tabs', 'dtabs']) for (const x of $(box).children) x.setAttribute('aria-pressed', x.dataset.t === t);
   for (const k of Object.keys(TABS)) $('v-' + k).hidden = k !== t;
@@ -799,8 +798,8 @@ async function refresh() {
   try {
     const r = await fetchData(code, ver);
     syncedAt = Date.now();
-    const roleChanged = r.role !== USER.role || r.name !== USER.name;
-    USER = { role: r.role, name: r.name }; LS.set('user', USER);
+    const roleChanged = JSON.stringify([r.tabs, r.name, r.title]) !== JSON.stringify([USER.tabs, USER.name, USER.title]);
+    USER = { name: r.name, title: r.title, tabs: r.tabs }; LS.set('user', USER);
     if (!r.same) { ver = r.ver; start(r.data); idbSet('data', { ver, code, user: USER, data: r.data, at: syncedAt }); }
     else { if (roleChanged && loaded) { applyRole(); showTab(tab); render(); } idbGet('data').then(c => c && idbSet('data', Object.assign(c, { at: syncedAt, user: USER }))); }
     setSync('ok');
@@ -813,7 +812,7 @@ async function refresh() {
 
 async function logout() {
   LS.del('code'); LS.del('user'); await idbSet('data', null);
-  ver = ''; loaded = false; syncedAt = 0; USER = { role: 'dir', name: '' };
+  ver = ''; loaded = false; syncedAt = 0; USER = { name: '', title: '', tabs: [] };
   show('gate'); $('code').value = ''; $('gate-msg').textContent = '';
 }
 
@@ -840,7 +839,7 @@ async function boot() {
     btn.disabled = true; btn.textContent = 'جارٍ تنزيل البيانات…'; $('gate-msg').textContent = '';
     try {
       const r = await fetchData(code, '');
-      LS.set('code', code); USER = { role: r.role, name: r.name }; LS.set('user', USER);
+      LS.set('code', code); USER = { name: r.name, title: r.title, tabs: r.tabs }; LS.set('user', USER);
       ver = r.ver; syncedAt = Date.now();
       start(r.data); setSync('ok');
       idbSet('data', { ver, code, user: USER, data: r.data, at: syncedAt });
